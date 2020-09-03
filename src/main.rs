@@ -4,11 +4,17 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::sync::mpsc;
 use std::thread;
+use structopt::StructOpt;
 
-const DIFFICULTY: usize = 3;
-const NUM_THREADS: usize = 4;
+#[derive(StructOpt)]
+struct Opt {
+    #[structopt(short, long, default_value = "3")]
+    difficulty: usize,
+    #[structopt(short = "t", long, default_value = "4")]
+    num_threads: usize,
+}
 
-fn try_hash(tx: mpsc::Sender<Vec<u8>>, solved: Arc<AtomicBool>) {
+fn try_hash(tx: mpsc::Sender<Vec<u8>>, solved: Arc<AtomicBool>, difficulty: usize) {
     let h = Sha256::new();
     let mut rng = rand::thread_rng();
     loop {
@@ -19,7 +25,7 @@ fn try_hash(tx: mpsc::Sender<Vec<u8>>, solved: Arc<AtomicBool>) {
         //println!("trying: {:?}", &x[0..64]);
         let mut g = h.clone();
         g.update(&x);
-        if g.finalize()[0..DIFFICULTY] == x[0..DIFFICULTY] {
+        if g.finalize()[0..difficulty] == x[0..difficulty] {
             solved.store(true, Ordering::SeqCst);
             tx.send(x).unwrap();
             break;
@@ -29,13 +35,15 @@ fn try_hash(tx: mpsc::Sender<Vec<u8>>, solved: Arc<AtomicBool>) {
 
 fn main() {
     println!("initialising... ");
+    let opt = Opt::from_args();
     let solved = Arc::new(AtomicBool::new(false));
     let (tx, rx) = mpsc::channel::<Vec<u8>>();
-    let handles = (0..NUM_THREADS - 1)
+    let handles = (1..opt.num_threads)
         .map(|_| {
             let tx = tx.clone();
             let solved = solved.clone();
-            thread::spawn(move || try_hash(tx, solved))
+            let difficulty = opt.difficulty;
+            thread::spawn(move || try_hash(tx, solved, difficulty))
         })
         .collect::<Vec<thread::JoinHandle<_>>>();
     for h in handles {
