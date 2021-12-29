@@ -16,12 +16,13 @@ struct Opt {
 
 fn try_hash(tx: mpsc::Sender<Vec<u8>>, solved: Arc<AtomicBool>, difficulty: usize) {
     let mut rng = rand::thread_rng();
+    let mut x = vec![0u8; 64];
+
     loop {
-        if solved.load(Ordering::SeqCst) == true {
+        if solved.load(Ordering::SeqCst) {
             break;
         }
-        let x: Vec<u8> = (0..64).map(|_| rng.gen::<u8>()).collect();
-        //println!("trying: {:?}", &x[0..64]);
+        rng.fill(&mut x[..]);
         let cand = Sha256::digest(&x);
         if cand[0..difficulty] == x[0..difficulty] {
             solved.store(true, Ordering::SeqCst);
