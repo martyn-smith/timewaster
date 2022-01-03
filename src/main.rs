@@ -49,5 +49,6 @@ fn main() {
         h.join().unwrap();
     }
     let answer = rx.recv().unwrap();
-    println!("{:x?} partially matches its own hash.", answer);
+    let msg = answer.iter().fold(String::new(), |out, i| format!("{}{:01x}", out, i));
+    println!("{}\tpartially matches its own hash.", msg);
 }
