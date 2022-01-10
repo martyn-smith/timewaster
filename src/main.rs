@@ -65,15 +65,15 @@ mod tests {
 
     #[test]
     fn known_hash() {
-        let matching = "d7d0ffe6d449ecd1cb391f7e1c5b348c8762c2f48b59706f11e0fcef40dd6a92248937334a96e81d59db10eea775bd1630f2bacd403f83f2b44cf309876176b2";
-        let m = matching.as_bytes()
+        let matching = b"d7d0ffe6d449ecd1cb391f7e1c5b348c8762c2f48b59706f11e0fcef40dd6a92248937334a96e81d59db10eea775bd1630f2bacd403f83f2b44cf309876176b2";
+        let m = matching
                         .chunks(2)
                         .map(|c| u8::from_str_radix(std::str::from_utf8(c).unwrap(), 16).unwrap())
                         .collect::<Vec<u8>>();
         let test = Sha256::digest(&m);
         assert_eq!(test[0..3], m[0..3]);
         let msg = m.iter().fold(String::new(), |out, i| format!("{}{:02x}", out, i));
-        assert_eq!(matching, msg);
+        assert_eq!(matching, msg.as_bytes());
     }
 
     #[test]
