@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::sync::mpsc;
 use std::thread;
 use structopt::StructOpt;
+use colored::Colorize;
 
 #[derive(StructOpt)]
 struct Opt {
@@ -14,6 +15,11 @@ struct Opt {
     num_threads: usize,
 }
 
+macro_rules! hexify {
+    ($vec:ident) => {
+        $vec.iter().fold(String::new(), |out, elem| format!("{}{:02x}", out, elem))
+    };
+}
 /*
  * CONSIDER: not checking for a solution every round.
  * The downside of this, other than slightly higher complication, is a
@@ -25,13 +31,13 @@ fn hunt(tx: mpsc::Sender<Vec<u8>>, solved: Arc<AtomicBool>, difficulty: usize) {
     let mut cand = vec![0u8; 64];
 
     loop {
-        if solved.load(Ordering::SeqCst) {
+        if solved.load(Ordering::Relaxed) {
             break;
         }
         rng.fill(&mut cand[..]);
         let test = Sha256::digest(&cand);
         if test[0..difficulty] == cand[0..difficulty] {
-            solved.store(true, Ordering::SeqCst);
+            solved.store(true, Ordering::Relaxed);
             tx.send(cand).unwrap();
             break;
         }
@@ -55,8 +61,7 @@ fn main() {
         h.join().unwrap();
     }
     let answer = rx.recv().unwrap();
-    let msg = answer.iter().fold(String::new(), |out, i| format!("{}{:02x}", out, i));
-    println!("{}\tpartially matches its own hash.", msg);
+    println!("{}\npartially matches its own hash.", hexify!(answer).yellow());
 }
 
 #[cfg(test)]
