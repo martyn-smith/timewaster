@@ -1,10 +1,13 @@
 use rand::prelude::*;
 use sha2::{Digest, Sha256};
-use std::sync::{Arc, mpsc, RwLock};
+use std::sync::{Arc, mpsc, Mutex, RwLock};
 use std::thread;
 use std::time;
 use clap::Parser;
 use colored::Colorize;
+
+const UPDATE_FREQUENCY: usize = 1_000_000;
+const REPORT_FREQUENCY: usize = 10;
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -25,44 +28,53 @@ macro_rules! hexify {
  * slight inefficiency; if we only check every n times, up to n hashes
  * are "wasted" (per thread). But overall we'd expect a speedup.
  */
-fn hunt(tx: mpsc::Sender<Vec<u8>>, solved: Arc<RwLock<bool>>, difficulty: usize) {
+fn hunt(difficulty: usize, solved: Arc<RwLock<bool>>, solution: mpsc::Sender<Vec<u8>>, counter: Arc<Mutex<usize>>) {
     let mut rng = rand::thread_rng();
     let mut cand = vec![0u8; 64];
+    let mut ctr = 0usize;
 
-    loop {
-        if *solved.read().unwrap() {
-            break;
-        }
+    while !*solved.read().unwrap() {
         rng.fill(&mut cand[..]);
         let test = Sha256::digest(&cand);
         if test[0..difficulty] == cand[0..difficulty] {
             *solved.write().unwrap() = true;
-            tx.send(cand).unwrap();
-            break;
+            solution.send(cand.clone()).unwrap();
+        }
+        ctr += 1;
+        if ctr % UPDATE_FREQUENCY == 0 {
+            let mut counter = counter.lock().unwrap();
+            *counter += UPDATE_FREQUENCY;
         }
     }
 }
 
-fn report(solved: Arc<RwLock<bool>>) {
+fn report(solved: Arc<RwLock<bool>>, counter: Arc<Mutex<usize>>) {
+    let mut last = 0usize;
     while !*solved.read().unwrap() {
-        thread::sleep(time::Duration::from_millis(1000));
+        thread::sleep(time::Duration::from_millis(REPORT_FREQUENCY as u64 * 1000));
+        let ctr = counter.lock().unwrap();
+        let next = *ctr;
+        println!("{} MH/s", (next - last) / (REPORT_FREQUENCY * UPDATE_FREQUENCY));
+        last = next;
     }
 }
 
 fn main() {
     println!("initialising... ");
     let args = Args::parse();
-    let solved = Arc::new(RwLock::new(false));
     let (tx, rx) = mpsc::channel::<Vec<u8>>();
+    let solved = Arc::new(RwLock::new(false));
+    let counter = Arc::new(Mutex::new(0usize));
     let handles = (1..args.num_threads)
         .map(|_| {
-            let tx = tx.clone();
-            let solved = solved.clone();
             let difficulty = args.difficulty;
-            thread::spawn(move || hunt(tx, solved, difficulty))
+            let solution = tx.clone();
+            let solved = solved.clone();
+            let counter = counter.clone();
+            thread::spawn(move || hunt(difficulty, solved, solution, counter))
         })
         .collect::<Vec<thread::JoinHandle<_>>>();
-    let _ = thread::spawn(move || report(solved.clone()));
+    let _ = thread::spawn(move || report(solved.clone(), counter.clone()));
     for h in handles {
         h.join().unwrap();
     }
