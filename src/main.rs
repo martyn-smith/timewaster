@@ -1,17 +1,16 @@
 use rand::prelude::*;
 use sha2::{Digest, Sha256};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc, RwLock};
 use std::thread;
-use structopt::StructOpt;
+use std::time;
+use clap::Parser;
 use colored::Colorize;
 
-#[derive(StructOpt)]
-struct Opt {
-    #[structopt(short, long, default_value = "3")]
+#[derive(Parser, Debug)]
+struct Args {
+    #[arg(short, long, default_value = "3")]
     difficulty: usize,
-    #[structopt(short = "t", long, default_value = "4")]
+    #[arg(short = 't', long, default_value = "4")]
     num_threads: usize,
 }
 
@@ -26,37 +25,44 @@ macro_rules! hexify {
  * slight inefficiency; if we only check every n times, up to n hashes
  * are "wasted" (per thread). But overall we'd expect a speedup.
  */
-fn hunt(tx: mpsc::Sender<Vec<u8>>, solved: Arc<AtomicBool>, difficulty: usize) {
+fn hunt(tx: mpsc::Sender<Vec<u8>>, solved: Arc<RwLock<bool>>, difficulty: usize) {
     let mut rng = rand::thread_rng();
     let mut cand = vec![0u8; 64];
 
     loop {
-        if solved.load(Ordering::Relaxed) {
+        if *solved.read().unwrap() {
             break;
         }
         rng.fill(&mut cand[..]);
         let test = Sha256::digest(&cand);
         if test[0..difficulty] == cand[0..difficulty] {
-            solved.store(true, Ordering::Relaxed);
+            *solved.write().unwrap() = true;
             tx.send(cand).unwrap();
             break;
         }
     }
 }
 
+fn report(solved: Arc<RwLock<bool>>) {
+    while !*solved.read().unwrap() {
+        thread::sleep(time::Duration::from_millis(1000));
+    }
+}
+
 fn main() {
     println!("initialising... ");
-    let opt = Opt::from_args();
-    let solved = Arc::new(AtomicBool::new(false));
+    let args = Args::parse();
+    let solved = Arc::new(RwLock::new(false));
     let (tx, rx) = mpsc::channel::<Vec<u8>>();
-    let handles = (1..opt.num_threads)
+    let handles = (1..args.num_threads)
         .map(|_| {
             let tx = tx.clone();
             let solved = solved.clone();
-            let difficulty = opt.difficulty;
+            let difficulty = args.difficulty;
             thread::spawn(move || hunt(tx, solved, difficulty))
         })
         .collect::<Vec<thread::JoinHandle<_>>>();
+    let _ = thread::spawn(move || report(solved.clone()));
     for h in handles {
         h.join().unwrap();
     }
