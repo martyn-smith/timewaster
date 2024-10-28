@@ -65,19 +65,16 @@ fn main() {
     let (tx, rx) = mpsc::channel::<Vec<u8>>();
     let solved = Arc::new(RwLock::new(false));
     let counter = Arc::new(Mutex::new(0usize));
-    let handles = (1..args.num_threads)
-        .map(|_| {
+    thread::scope(|s| {
+        for _ in 1..args.num_threads {
             let difficulty = args.difficulty;
             let solution = tx.clone();
             let solved = solved.clone();
             let counter = counter.clone();
-            thread::spawn(move || hunt(difficulty, solved, solution, counter))
-        })
-        .collect::<Vec<thread::JoinHandle<_>>>();
-    let _ = thread::spawn(move || report(solved.clone(), counter.clone()));
-    for h in handles {
-        h.join().unwrap();
-    }
+            s.spawn(move || hunt(difficulty, solved, solution, counter));
+        };
+        s.spawn(move || report(solved.clone(), counter.clone()));
+    });
     let answer = rx.recv().unwrap();
     println!("{}\npartially matches its own hash.", hexify!(answer).yellow());
 }
