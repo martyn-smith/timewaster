@@ -43,7 +43,7 @@ fn hunt(difficulty: usize, solved: Arc<RwLock<bool>>, solution: mpsc::Sender<Vec
         ctr += 1;
         if ctr % UPDATE_FREQUENCY == 0 {
             let mut counter = counter.lock().unwrap();
-            *counter += UPDATE_FREQUENCY;
+            *counter += 1;
         }
     }
 }
@@ -54,7 +54,7 @@ fn report(solved: Arc<RwLock<bool>>, counter: Arc<Mutex<usize>>) {
         thread::sleep(time::Duration::from_millis(REPORT_FREQUENCY as u64 * 1000));
         let ctr = counter.lock().unwrap();
         let next = *ctr;
-        println!("{} MH/s", (next - last) / (REPORT_FREQUENCY * UPDATE_FREQUENCY));
+        println!("{} MH/s", (next - last) / REPORT_FREQUENCY);
         last = next;
     }
 }
@@ -98,9 +98,10 @@ mod tests {
 
     #[test]
     fn unknown_hash() {
-        let solved = Arc::new(AtomicBool::new(false));
+        let solved = Arc::new(RwLock::new(false));
         let (tx, rx) = mpsc::channel::<Vec<u8>>();
-        hunt(tx, solved, 3);
+        let counter = Arc::new(Mutex::new(0usize));
+        hunt(3, solved, tx, counter);
         let m = rx.recv().unwrap();
         let test = Sha256::digest(&m);
         assert_eq!(test[0..3], m[0..3]);
