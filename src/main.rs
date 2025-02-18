@@ -2,6 +2,7 @@ use clap::Parser;
 use colored::Colorize;
 use rand::prelude::*;
 use sha2::{Digest, Sha256};
+use std::fmt::Write;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
@@ -20,8 +21,10 @@ struct Args {
 
 macro_rules! hexify {
     ($vec:ident) => {
-        $vec.iter()
-            .fold(String::new(), |out, elem| format!("{}{:02x}", out, elem))
+        $vec.iter().fold(String::new(), |mut out, elem| {
+            let _ = write!(&mut out, "{:02x}", elem);
+            out
+        })
     };
 }
 /*
@@ -72,7 +75,9 @@ fn main() {
     let (tx, rx) = mpsc::channel::<Vec<u8>>();
     let solved = Arc::new(AtomicBool::new(false));
     let counter = Arc::new(Mutex::new(0usize));
-    let thread_count = args.num_threads.unwrap_or(thread::available_parallelism().unwrap().get());
+    let thread_count = args
+        .num_threads
+        .unwrap_or(thread::available_parallelism().unwrap().get());
     let difficulty = args.difficulty;
     thread::scope(|s| {
         for _ in 1..thread_count {
